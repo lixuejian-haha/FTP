@@ -1,4 +1,4 @@
-﻿
+
 #include<iostream>
 #include<winsock.h>
 #include<string.h>
@@ -6,6 +6,7 @@
 #include<fstream>
 #include<filesystem>
 #include<stdio.h>
+#include<direct.h>
 #pragma comment(lib,"ws2_32.lib")
 using namespace std;
 using namespace std::filesystem;
@@ -128,12 +129,14 @@ void cd(string cmd) {
 	string path;
 	while (istr >> path);
 	if (path == "..") {
-		curPath = curPath.remove_filename();
-		if (ls() == 0) {
-			curPath.remove_filename();
-			cout << curPath;
-		}
-		else cout << curPath;
+		curPath = curPath.parent_path();
+		//if (ls() == 0) {
+		//	curPath.remove_filename();
+		//	cout << curPath;
+		//}
+		//else cout << curPath;
+		//_getcwd(path_buff, 1024);
+		//string curPath = path_buff;
 		string tmp(curPath.u8string());
 		char* sendbuf = tmp.data();
 		send(s_accept, sendbuf, strlen(sendbuf), 0);
@@ -193,6 +196,12 @@ int main() {
 		return 0;
 	}
 	cout << "连接建立，等待指令..." << endl;
+
+	//获取当前路径
+	char path_buff[1024];
+	_getcwd(path_buff, 1024);
+	string path_string = path_buff;
+	curPath.assign(path_string);
 	
 	//接收数据
 	while (1) {
