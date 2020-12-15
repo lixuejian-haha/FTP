@@ -1,4 +1,4 @@
-﻿
+
 #include<iostream>
 #include<winsock.h>
 #include<string.h>
@@ -6,6 +6,7 @@
 #include<fstream>
 #include<filesystem>
 #include<stdio.h>
+#include<direct.h>
 #pragma comment(lib,"ws2_32.lib")
 using namespace std;
 using namespace std::filesystem;
@@ -41,6 +42,7 @@ char recv_buf[1024];
 //}
 void sendFile(path filename) {
 	send(s_accept, "file", 4, 0);
+	memset(recv_buf, '\0', sizeof(recv_buf));
 	recv(s_accept, recv_buf, 1024, 0);//粘包
 	FILE* fp;
 	string tmp = filename.u8string();
@@ -50,8 +52,11 @@ void sendFile(path filename) {
 	fseek(fp, 0, SEEK_END);
 	int size = ftell(fp);
 	stmp << size;
+	memset(send_buf, '\0', sizeof(send_buf));
 	stmp >> send_buf;
+	
 	send(s_accept, send_buf, strlen(send_buf), 0);
+	memset(recv_buf, '\0', sizeof(recv_buf));
 	recv(s_accept, recv_buf, 1024, 0);//粘包
 	send(s_accept, file, strlen(file), 0);
 	recv(s_accept, recv_buf, 1024, 0);//粘包
@@ -63,9 +68,13 @@ void sendFile(path filename) {
 		if (i > size) {
 			len = size + 1000 - i;
 		}
+		//send(s_accept, send_buf, strlen(send_buf), 0);
+		memset(send_buf, '\0', sizeof(send_buf));
 		fgets(send_buf, len, fp);
-		send(s_accept, send_buf, len, 0);
+		send(s_accept, send_buf, strlen(send_buf), 0);
+		//send(s_accept, send_buf, len, 0);
 	}
+	memset(recv_buf, '\0', sizeof(recv_buf));
 	recv(s_accept, recv_buf, 1024, 0);//粘包
 }
 void sendDir(path filepath) {
@@ -117,7 +126,7 @@ int ls() {
 		filename.push_back(tmp);
 	}
 	for (int i = 0; i < filename.size(); i++) {
-		temp += filename[i] + ' ';
+		temp += "<" + filename[i] + ">" + ' ';
 	}
 	char* sendbuf = temp.data();
 	send(s_accept, sendbuf, strlen(sendbuf), 0);
@@ -128,26 +137,33 @@ void cd(string cmd) {
 	string path;
 	while (istr >> path);
 	if (path == "..") {
-		curPath = curPath.remove_filename();
-		if (ls() == 0) {
-			curPath.remove_filename();
-			cout << curPath;
-		}
-		else cout << curPath;
+		curPath = curPath.parent_path();
+		//if (ls() == 0) {
+		//	curPath.remove_filename();
+		//	cout << curPath;
+		//}
+		//else cout << curPath;
+		//_getcwd(path_buff, 1024);
+		//string curPath = path_buff;
 		string tmp(curPath.u8string());
 		char* sendbuf = tmp.data();
 		send(s_accept, sendbuf, strlen(sendbuf), 0);
 	}
 	else if (cmd.size() > 2) {
 		curPath.append(path);
-		if (ls() == 0) {
+		if (!exists(curPath)) {
+			cout << "路径不存在" << endl;
+			const char* sendbuf = "路径不存在";
+			send(s_accept, sendbuf, strlen(sendbuf), 0);
 			curPath.remove_filename();
 			cout << curPath;
 		}
-		else cout << curPath;
-		string tmp(curPath.u8string());
-		char* sendbuf = tmp.data();
-		send(s_accept, sendbuf, strlen(sendbuf), 0);
+		else{
+			cout << curPath;
+			string tmp(curPath.u8string());
+			char* sendbuf = tmp.data();
+			send(s_accept, sendbuf, strlen(sendbuf), 0);
+		}
 	}
 }
 
@@ -157,6 +173,9 @@ int main() {
 	int recv_len = 0;
 	int len = 0;
 
+	//获取当前工作路径
+	char path_buff[1024];
+	_getcwd(path_buff, 1024);
 
 	//服务端地址客户端地址
 	SOCKADDR_IN server_addr;
@@ -183,24 +202,32 @@ int main() {
 	else {
 		cout << "设置监听状态成功！" << endl;
 	}
-	cout << "服务端正在监听连接，请稍候...." << endl;
-	//接受连接请求
-	len = sizeof(SOCKADDR);
-	s_accept = accept(s_server, (SOCKADDR*)&accept_addr, &len);
-	if (s_accept == SOCKET_ERROR) {
-		cout << "连接失败！" << endl;
-		WSACleanup();
-		return 0;
-	}
-	cout << "连接建立，等待指令..." << endl;
-	
-	//接收数据
 	while (1) {
-		recv_len = recv(s_accept, recv_buf, 1024, 0);
-		recv_buf[recv_len] = '\0';
-		if (strcmp(recv_buf, "ls") == 0) ls();
-		else if (recv_buf[0] == 'c' && recv_buf[1] == 'd') cd(recv_buf);
-		else if (string(recv_buf).find("get") != string::npos) get(recv_buf);
+		cout << "服务端正在监听连接，请稍候...." << endl;
+		//接受连接请求
+		len = sizeof(SOCKADDR);
+		s_accept = accept(s_server, (SOCKADDR*)&accept_addr, &len);
+		if (s_accept == SOCKET_ERROR) {
+			cout << "连接失败！" << endl;
+			WSACleanup();
+			return 0;
+		}
+		cout << "连接建立，等待指令..." << endl;
+
+		//返回初始路径
+		string path_string = path_buff;
+		curPath.assign(path_string);
+
+		//接收数据
+		while (1) {
+			cout << "等待指令..." << endl;
+			recv_len = recv(s_accept, recv_buf, 1024, 0);
+			recv_buf[recv_len] = '\0';
+			if (strcmp(recv_buf, "ls") == 0) { ls(); cout << "ls指令执行成功！" << endl; }
+			else if (recv_buf[0] == 'c' && recv_buf[1] == 'd') { cd(recv_buf); cout << "cd指令执行成功！" << endl; }
+			else if (string(recv_buf).find("get") != string::npos) { get(recv_buf); cout << "get指令执行成功！" << endl; }
+			else if (strcmp(recv_buf, "end") == 0) { cout << "连接中断" << endl; break; }
+		}
 	}
 	//关闭套接字
 	closesocket(s_server);
