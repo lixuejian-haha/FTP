@@ -1,4 +1,4 @@
-﻿#include<iostream>
+#include<iostream>
 #include<winsock.h>
 #include<string.h>
 #include<sstream>
@@ -23,22 +23,26 @@ void cd(string cmd) {
 	char* send_buf = cmd.data();
 	send(s_server, send_buf, strlen(send_buf), 0);
 	ls();
-	int recv_len = recv(s_server, recv_buf, 1024, 0);
-	recv_buf[recv_len] = '\0';
-	curPath = path(recv_buf);
+	//int recv_len = recv(s_server, recv_buf, 1024, 0);
+	//recv_buf[recv_len] = '\0';
+	//curPath = path(recv_buf);
 }
-void getFile() {
+void getFile(string filepath) {
+	memset(recv_buf, '\0', sizeof(recv_buf));
 	recv(s_server, recv_buf, 1024, 0);
 	send(s_server, "ok", 2, 0);
+	memset(recv_buf, '\0', sizeof(recv_buf));
 	int recv_len = recv(s_server, recv_buf, 1024, 0);
 	int size = atoi(recv_buf);
 	send(s_server, "ok", 2, 0);
+	memset(recv_buf, '\0', sizeof(recv_buf));
 	recv(s_server, recv_buf, 1024, 0);
 	FILE* fp;
-	fopen_s(&fp, recv_buf, "wb");
+	fopen_s(&fp, filepath.c_str(), "wb");
 	send(s_server, "ok", 2, 0);
 	int curSize = 0;
 	while (curSize < size) {
+		memset(recv_buf, '\0', sizeof(recv_buf));
 		int recSize = recv(s_server, recv_buf, 1024, 0);
 		fwrite(recv_buf, sizeof(char), recSize, fp);
 		curSize += recSize;
@@ -58,7 +62,12 @@ void get(string cmd) {
 	while (istr >> file);
 	path filepath = curPath;
 	filepath.append(file);
-	if (filepath.has_extension()) getFile();
+	if (filepath.has_extension()) {
+		getFile(filepath.u8string());
+		memset(recv_buf, '\0', sizeof(recv_buf));
+		recv(s_server, recv_buf, 1024, 0);
+		cout << recv_buf << endl;
+	}
 	else getDir();
 }
 int main() {
@@ -85,7 +94,7 @@ int main() {
 	}
 	//发送,接收数据
 	while (1) {
-		cout << "请输入命令:";
+		cout << "请输入命令:" << endl;
 		string cmd;
 		getline(cin, cmd);
 		if (cmd == "ls") {
@@ -95,7 +104,8 @@ int main() {
 		}
 		else if (cmd.find("cd") != string::npos) cd(cmd);
 		else if (cmd.find("get") != string::npos) get(cmd);
-
+		else if (cmd.find("end") != string::npos) { send(s_server, "end", 3, 0); break; }
+		else cout << "未识别的指令" << endl;
 	}
 	//关闭套接字
 	closesocket(s_server);
